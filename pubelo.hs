@@ -1,3 +1,5 @@
+#!/usr/bin/env stack
+-- stack --install-ghc runghc --package turtle --resolver lts-3.20
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main where
@@ -12,7 +14,6 @@ import Data.Text (unpack)
 
 main :: IO ()
 main = sh $ do
-  env >>= echo . repr . filter (("GHC_PACKAGE_PATH" ==). fst)
   (repo, commit) <- options "pubelo - pull, benchmark and create gipeda logs" parser
   dir <- using (mksystempdir "pubelo")
   cloneRecursiveAndCheckout repo commit dir
