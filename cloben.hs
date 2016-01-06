@@ -2,6 +2,17 @@
 -- stack --resolver lts-3.20 --install-ghc runghc --package turtle
 {-# LANGUAGE OverloadedStrings #-}
 
+{-| This script will automatically clone a given git repository at a specific
+    commit into a temporary directory and parse the output of @cabal bench@
+    into a CSV format readable by <https://github.com/nomeata/gipeda gipeda>.
+
+    Currently, only the number of build warnings and standard criterion timing
+    output are recognized.
+
+    You can execute this script by running @stack cloben.hs repo commit@ or
+    even as @./cloben.hs repo commit@ if marked as executable.
+-}
+
 module Main where
 
 import Turtle
@@ -10,14 +21,31 @@ import Filesystem.Path.CurrentOS (FilePath)
 import qualified Filesystem.Path.CurrentOS as Filesystem
 import System.IO.Temp (withSystemTempDirectory)
 import Data.Char (isSpace)
-import Data.Text (pack, unpack, unlines)
+import Data.Text (Text, pack, unpack, unlines)
 import Numeric (fromRat, showFFloat)
 
 
+{-| A gipeda metric, later to be displayed in a graph. The `Text` will be used as
+    the name of the benchmark, the `Rational` is the actual metric which will be
+    graphed. this will be the timing nanoseconds for benchmarks, or the number
+    of build warnings.
+-}
+type Metric
+  = (Text, Rational)
+
+
+{-| Parses the command line, creates a temporary directory into which to clone
+    the passed repository (see @cloneRecursiveAndCheckout@).
+    After that, @cabalBench@ returns the parsed metrics which are then converted
+    into the gipeda CSV format.
+
+    Finally, @cd@ing into @home@ will prevent the shell to complain about the
+    immediately deleted temporary dir, which would be the @pwd@.
+-}
 main :: IO ()
 main = sh $ do
-  (repo, commit, verbose) <- options "pubelo - pull, benchmark and create gipeda logs" parser
-  dir <- using (mksystempdir "pubelo")
+  (repo, commit, verbose) <- options "cloben - pull, benchmark and create gipeda logs" parser
+  dir <- using (mksystempdir "cloben")
   cloneRecursiveAndCheckout repo commit dir verbose
   metrics <- cabalBench dir verbose
   echo (toCSV metrics)
@@ -32,13 +60,21 @@ parser =
     <*> switch "verbose" 'v' "Output helpful debug messages as well as shell output"
 
 
-mksystempdir :: Text -> Managed FilePath -- like mktempdir, but no need to specify a parent
+-- | Like `Turtle.mktempdir`, but no need to specify a parent
+mksystempdir :: Text -> Managed FilePath
 mksystempdir prefix = do
   let prefix' = unpack prefix
   dir' <- managed (withSystemTempDirectory prefix')
   return (Filesystem.decodeString dir')
 
 
+{-| @cloneRecursiveAndCheckout repo commit dir verbose@ effectively performs a
+    recursive @git clone@ on @repo@ and checks out the specified @commit@ into
+    the directory given by @dir@.
+
+    If @verbose@ is @True@, useful debug output
+    is printed which normally interferes with the CSV output.
+-}
 cloneRecursiveAndCheckout :: Text -> Text -> FilePath -> Bool -> Shell ()
 cloneRecursiveAndCheckout repo commit dir verbose = do
   let
@@ -56,7 +92,25 @@ cloneRecursiveAndCheckout repo commit dir verbose = do
   return ()
 
 
-cabalBench :: FilePath -> Bool -> Shell [(Text, Rational)]
+{-| @cabalBench projectDir verbose@ builds the cabal project at @projectDir@
+    with enabled benchmarks.
+
+    The number of warnings is extracted as a @Metric@ as @build/warnings;n@.
+
+    After that, a @cabal bench@ is performed, of which the output is parsed for
+    standard criterion timing output, where the timings are in nanoseconds.
+    See `criterionBenchmarks`.
+
+    If @verbose@ is @True@, useful debug output
+    is printed which normally interferes with the CSV output.
+
+    Also @GHC_PACKAGE_PATH@ is set when executing this through stack or cabal
+    I guess, which causes the build to error. That's why we unset.
+
+    For @cabal build@, we need to redirect stderr into stdout, so that we can
+    parse for warnings (that's the @2>&1@).
+-}
+cabalBench :: FilePath -> Bool -> Shell [Metric]
 cabalBench projectDir verbose = do
   let
     log text =
@@ -74,11 +128,11 @@ cabalBench projectDir verbose = do
 
   let
     -- using head here is safe, since there is always a match
-    benchmarks :: [(Text, Rational)]
+    benchmarks :: [Metric]
     benchmarks =
       head (match criterionBenchmarks benchOutput)
 
-    warnings :: (Text, Rational)
+    warnings :: Metric
     warnings =
       head (match buildWarnings buildOutput)
 
@@ -101,7 +155,7 @@ reportError cmd code =
     ExitFailure n -> die (cmd <> " failed with exit code " <> repr n)
 
 
-buildWarnings :: Pattern (Text, Rational)
+buildWarnings :: Pattern Metric
 buildWarnings =
   nameAndLength <$> (selfless chars *> many (warning <* selfless chars))
     where
@@ -114,11 +168,11 @@ buildWarnings =
         ("build/warnings", fromIntegral (length xs))
 
 
-criterionBenchmarks :: Pattern [(Text, Rational)]
+criterionBenchmarks :: Pattern [Metric]
 criterionBenchmarks =
   selfless chars *> (mconcat <$> (many benchmarkGroup))
     where
-      benchmarkGroup :: Pattern [(Text, Rational)]
+      benchmarkGroup :: Pattern [Metric]
       benchmarkGroup = do
         text "Benchmark "
         group <- word
@@ -127,7 +181,7 @@ criterionBenchmarks =
         benchmarks <- many (benchmark <* selfless chars1)
         return (map (\(n, t) -> ("benchmark/" <> group <> "/" <> n, t)) benchmarks)
 
-      benchmark :: Pattern (Text, Rational)
+      benchmark :: Pattern Metric
       benchmark = do
         text "benchmarking "
         name <- word
@@ -174,7 +228,7 @@ criterionBenchmarks =
           ]
 
 
-toCSV :: [(Text, Rational)] -> Text
+toCSV :: [Metric] -> Text
 toCSV =
   unlines . map (\(name, metric) -> name <> ";" <> showRat metric)
     where
