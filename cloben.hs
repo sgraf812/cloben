@@ -56,7 +56,7 @@ parser :: Parser (Text, Text, Bool)
 parser =
   (,,)
     <$> argText "repo" "URL or file path of the repository to pull from"
-    <*> argText "commit" "SHA of the specific commit to benchmark"
+    <*> argText "commit" "SHA prefix of the specific commit to benchmark"
     <*> switch "verbose" 'v' "Output helpful debug messages as well as shell output"
 
 
