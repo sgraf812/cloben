@@ -19,16 +19,9 @@ main = sh $ do
   (repo, commit, verbose) <- options "pubelo - pull, benchmark and create gipeda logs" parser
   dir <- using (mksystempdir "pubelo")
   cloneRecursiveAndCheckout repo commit dir verbose
-  output <- cabalBench dir verbose
-
-  let
-    benchmarks :: [(Text, Nanoseconds)]
-    benchmarks =
-      case match criterionBenchmarks output of
-        m : _ -> m
-        [] -> []
-
-  echo (toCSV benchmarks)
+  metrics <- cabalBench dir verbose
+  echo (toCSV metrics)
+  cd =<< home -- to supress an error of the deleted temp dir
 
 
 parser :: Parser (Text, Text, Bool)
@@ -52,11 +45,9 @@ cloneRecursiveAndCheckout repo commit dir verbose = do
     log text =
       when verbose (echo text)
 
-    quietFlag =
-      if verbose then "--verbose" else "--quiet"
-
+  -- git seems to pipe to stderr mostly... So it won't pollute our audit
   log "> git clone <repo> <dir>"
-  (clone, _) <- procStrict "git" ["clone", repo, format fp dir, quietFlag] empty
+  (clone, _) <- procStrict "git" ["clone", repo, format fp dir] empty
   reportError "git clone <repo> <dir>" clone
   log "> Changing into the directory of the repository"
   cd dir
@@ -65,7 +56,7 @@ cloneRecursiveAndCheckout repo commit dir verbose = do
   return ()
 
 
-cabalBench :: FilePath -> Bool -> Shell Text
+cabalBench :: FilePath -> Bool -> Shell [(Text, Rational)]
 cabalBench projectDir verbose = do
   let
     log text =
@@ -78,8 +69,20 @@ cabalBench projectDir verbose = do
   shellAndReportError "cabal sandbox init" log
   shellAndReportError "cabal install -j --only-dependencies --enable-bench" log
   shellAndReportError "cabal configure --enable-benchmark" log
-  shellAndReportError "cabal build" log
-  shellAndReportError "cabal bench" log
+  buildOutput <- shellAndReportError "cabal build 2>&1" log -- redirect warnings to stdout
+  benchOutput <- shellAndReportError "cabal bench" log
+
+  let
+    -- using head here is safe, since there is always a match
+    benchmarks :: [(Text, Rational)]
+    benchmarks =
+      head (match criterionBenchmarks benchOutput)
+
+    warnings :: (Text, Rational)
+    warnings =
+      head (match buildWarnings buildOutput)
+
+  return (warnings : benchmarks)
 
 
 shellAndReportError :: Text -> (Text -> Shell ()) -> Shell Text
@@ -98,24 +101,33 @@ reportError cmd code =
     ExitFailure n -> die (cmd <> " failed with exit code " <> repr n)
 
 
-type Nanoseconds
-  = Rational
+buildWarnings :: Pattern (Text, Rational)
+buildWarnings =
+  nameAndLength <$> (selfless chars *> many (warning <* selfless chars))
+    where
+      warning :: Pattern ()
+      warning =
+        char ':' >> decimal >> char ':' >> decimal >> text ": Warning:" >> return ()
+
+      nameAndLength :: [a] -> (Text, Rational)
+      nameAndLength xs =
+        ("build/warnings", fromIntegral (length xs))
 
 
-criterionBenchmarks :: Pattern [(Text, Nanoseconds)]
+criterionBenchmarks :: Pattern [(Text, Rational)]
 criterionBenchmarks =
   selfless chars *> (mconcat <$> (many benchmarkGroup))
     where
-      benchmarkGroup :: Pattern [(Text, Nanoseconds)]
+      benchmarkGroup :: Pattern [(Text, Rational)]
       benchmarkGroup = do
         text "Benchmark "
         group <- word
         char ':'
         selfless chars
         benchmarks <- many (benchmark <* selfless chars1)
-        return (map (\(n, t) -> (group <> "/" <> n, t)) benchmarks)
+        return (map (\(n, t) -> ("benchmark/" <> group <> "/" <> n, t)) benchmarks)
 
-      benchmark :: Pattern (Text, Nanoseconds)
+      benchmark :: Pattern (Text, Rational)
       benchmark = do
         text "benchmarking "
         name <- word
@@ -161,11 +173,12 @@ criterionBenchmarks =
           , powerOf10 "as" 18
           ]
 
-toCSV :: [(Text, Nanoseconds)] -> Text
+
+toCSV :: [(Text, Rational)] -> Text
 toCSV =
-  unlines . map (\(name, time) -> "benchmark/" <> name <> ";" <> formatNS time)
+  unlines . map (\(name, metric) -> name <> ";" <> showRat metric)
     where
-      formatNS :: Nanoseconds -> Text
-      formatNS num =
+      showRat :: Rational -> Text
+      showRat num =
         -- The Nothing is for showing all digits. Terminates for our input
         pack ((showFFloat Nothing (fromRat num)) "")
