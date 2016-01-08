@@ -1,5 +1,5 @@
 #!/usr/bin/env stack
--- stack --resolver lts-3.20 --install-ghc runghc --package turtle
+-- stack --resolver lts-4.0 --install-ghc runghc --package turtle
 {-# LANGUAGE OverloadedStrings #-}
 
 {-| This script will automatically clone a given git repository at a specific
@@ -108,6 +108,9 @@ cloneRecursiveAndCheckout repo commit dir verbose = do
 
     Also @GHC_PACKAGE_PATH@ is set when executing this through @stack@,
     which causes the build to error. That's why we unset.
+    Passing `--ghc-no-package-path` to `stack runghc` would help, but then we
+    can't specify the `turtle` package. So, unsetting is the only viable solution,
+    I think.
 
     When executing this script through @stack@, it will automatically find and use
     the @cabal@ and @ghc@ binaries from the stack configuration. E.g., the result
