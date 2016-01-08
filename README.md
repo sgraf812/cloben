@@ -40,7 +40,8 @@ What running `cloben` on the `Pipes` library yielded:
 $ ./cloben.hs https://github.com/Gabriel439/Haskell-Pipes-Library 930c834aacfa7bf8ec65d072e0d0a982aa7a2bc1 > logs/930c834aacfa7bf8ec65d072e0d0a982aa7a2bc1.csv
 # Some irrevelant out-of-band git output
 $ cat logs/930c834aacfa7bf8ec65d072e0d0a982aa7a2bc1.csv
-enchmark/prelude-benchmarks/Folds/all;166800.0
+build/warnings;81.0
+benchmark/prelude-benchmarks/Folds/all;152900.0
 benchmark/prelude-benchmarks/Folds/any;163700.0
 benchmark/prelude-benchmarks/Folds/find;170800.0
 benchmark/prelude-benchmarks/Folds/findIndex;164500.0
@@ -77,3 +78,20 @@ benchmark/lift-benchmarks/StateT/evalStateP_A;349400.0
 benchmark/lift-benchmarks/StateT/execStateP_B;5451000.0
 benchmark/lift-benchmarks/StateT/execStateP_A;324300.0
 ```
+
+# Which `cabal`, `stack` and `ghc` binaries are used?
+
+Short answer: That found on the path at the time of executing this script.
+
+If `cloben` is compiled to an executable which is then called from your shell,
+it will use `cabal`, `stack` and `ghc` binaries found on your path.
+
+If however you prefer to run this as a script through `stack` (see above),
+note that `stack` modifies the environment, so it will use a 'stack-local' version
+of `cabal` when `stack install cabal-install` happened.
+
+Also, `stack` will modify the path so that it points to the `ghc` executable
+for the current resolver, meaning that even if `which ghc` returns nothing, the
+script executed through `stack` will find a `ghc`. This may be or not be what you
+want, depending on if you want to force the script to use the global installation
+of `ghc`.

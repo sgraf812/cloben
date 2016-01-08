@@ -106,8 +106,13 @@ cloneRecursiveAndCheckout repo commit dir verbose = do
     If @verbose@ is @True@, useful debug output
     is printed which normally interferes with the CSV output.
 
-    Also @GHC_PACKAGE_PATH@ is set when executing this through stack or cabal
-    I guess, which causes the build to error. That's why we unset.
+    Also @GHC_PACKAGE_PATH@ is set when executing this through @stack@,
+    which causes the build to error. That's why we unset.
+
+    When executing this script through @stack@, it will automatically find and use
+    the @cabal@ and @ghc@ binaries from the stack configuration. E.g., the result
+    of executing this script through @stack@ might have different results and
+    might even work when no @ghc@ or @cabal@ is on the path!
 
     For @cabal build@, we need to parse stderr for warnings.
 -}
