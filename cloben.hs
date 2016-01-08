@@ -125,14 +125,10 @@ cabalBench projectDir verbose = do
   shellAndReportError "cabal install -j --only-dependencies --enable-bench" log
   shellAndReportError "cabal configure --enable-benchmark" log
   log "> cabal bench"
-  buildOutAndErr <- fold (inshellWithErr "cabal build" empty) Fold.list
+  buildErr <- unlines . lefts <$> fold (inshellWithErr "cabal build" empty) Fold.list
   benchOutput <- shellAndReportError "cabal bench" log
 
   let
-    buildErr :: Text
-    buildErr =
-      unlines (lefts buildOutAndErr)
-
     -- using head here is safe, since there is always a match
     benchmarks :: [Metric]
     benchmarks =
