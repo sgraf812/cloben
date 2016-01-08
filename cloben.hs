@@ -17,10 +17,12 @@ module Main where
 
 import Turtle
 import Prelude hiding (FilePath, unlines)
+import qualified Control.Foldl as Fold
 import Filesystem.Path.CurrentOS (FilePath)
 import qualified Filesystem.Path.CurrentOS as Filesystem
 import System.IO.Temp (withSystemTempDirectory)
 import Data.Char (isSpace)
+import Data.Either (lefts)
 import Data.Text (Text, pack, unpack, unlines)
 import Numeric (fromRat, showFFloat)
 
@@ -107,8 +109,7 @@ cloneRecursiveAndCheckout repo commit dir verbose = do
     Also @GHC_PACKAGE_PATH@ is set when executing this through stack or cabal
     I guess, which causes the build to error. That's why we unset.
 
-    For @cabal build@, we need to redirect stderr into stdout, so that we can
-    parse for warnings (that's the @2>&1@).
+    For @cabal build@, we need to parse stderr for warnings.
 -}
 cabalBench :: FilePath -> Bool -> Shell [Metric]
 cabalBench projectDir verbose = do
@@ -123,10 +124,15 @@ cabalBench projectDir verbose = do
   shellAndReportError "cabal sandbox init" log
   shellAndReportError "cabal install -j --only-dependencies --enable-bench" log
   shellAndReportError "cabal configure --enable-benchmark" log
-  buildOutput <- shellAndReportError "cabal build 2>&1" log -- redirect warnings to stdout
+  log "> cabal bench"
+  buildOutAndErr <- fold (inshellWithErr "cabal build" empty) Fold.list
   benchOutput <- shellAndReportError "cabal bench" log
 
   let
+    buildErr :: Text
+    buildErr =
+      unlines (lefts buildOutAndErr)
+
     -- using head here is safe, since there is always a match
     benchmarks :: [Metric]
     benchmarks =
@@ -134,7 +140,7 @@ cabalBench projectDir verbose = do
 
     warnings :: Metric
     warnings =
-      head (match buildWarnings buildOutput)
+      head (match buildWarnings buildErr)
 
   return (warnings : benchmarks)
 
