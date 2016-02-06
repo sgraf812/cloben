@@ -1,8 +1,8 @@
 #!/usr/bin/env stack
--- stack --resolver lts-4.0 --install-ghc runghc --package turtle
+-- stack --resolver lts-5.1 --install-ghc runghc --package turtle --package tar
 {-# LANGUAGE OverloadedStrings #-}
 
-{-| This script will automatically clone a given git repository at a specific
+{-| This script will automatically @git export@ a given local git repository at a specific
     commit into a temporary directory and parse the output of @cabal bench@
     into a CSV format readable by <https://github.com/nomeata/gipeda gipeda>.
 
@@ -20,6 +20,7 @@ import Prelude hiding (FilePath, unlines)
 import qualified Control.Foldl as Fold
 import Filesystem.Path.CurrentOS (FilePath)
 import qualified Filesystem.Path.CurrentOS as Filesystem
+import qualified Codec.Archive.Tar as Tar
 import System.IO.Temp (withSystemTempDirectory)
 import Data.Char (isSpace)
 import Data.Either (lefts)
@@ -36,8 +37,8 @@ type Metric
   = (Text, Rational)
 
 
-{-| Parses the command line, creates a temporary directory into which to clone
-    the passed repository (see @cloneRecursiveAndCheckout@).
+{-| Parses the command line, creates a temporary directory into which to export
+    the passed repository (see @archiveAndExtract@).
     After that, @cabalBench@ returns the parsed metrics which are then converted
     into the gipeda CSV format.
 
@@ -48,7 +49,7 @@ main :: IO ()
 main = sh $ do
   (repo, commit, verbose) <- options "cloben - pull, benchmark and create gipeda logs" parser
   dir <- using (mksystempdir "cloben")
-  cloneRecursiveAndCheckout repo commit dir verbose
+  archiveAndExtract repo commit dir verbose
   metrics <- cabalBench dir verbose
   echo (toCSV metrics)
   cd =<< home -- to supress an error of the deleted temp dir
@@ -57,7 +58,7 @@ main = sh $ do
 parser :: Parser (Text, Text, Bool)
 parser =
   (,,)
-    <$> argText "repo" "URL or file path of the repository to pull from"
+    <$> argText "repo" "wile path of the local repository to export from"
     <*> argText "commit" "SHA prefix of the specific commit to benchmark"
     <*> switch "verbose" 'v' "Output helpful debug messages as well as shell output"
 
@@ -69,28 +70,36 @@ mksystempdir prefix = do
   dir' <- managed (withSystemTempDirectory prefix')
   return (Filesystem.decodeString dir')
 
-
-{-| @cloneRecursiveAndCheckout repo commit dir verbose@ effectively performs a
-    recursive @git clone@ on @repo@ and checks out the specified @commit@ into
-    the directory given by @dir@.
+{-| @archiveAndExtract repo commit dir verbose@ archives the local @repo@ at
+    the commit specified by SHA prefix @commit@ into the directory given by
+    @dir@.
 
     If @verbose@ is @True@, useful debug output
     is printed which normally interferes with the CSV output.
 -}
-cloneRecursiveAndCheckout :: Text -> Text -> FilePath -> Bool -> Shell ()
-cloneRecursiveAndCheckout repo commit dir verbose = do
+archiveAndExtract :: Text -> Text -> FilePath -> Bool -> Shell ()
+archiveAndExtract repo commit dir verbose = do
   let
     log text =
       when verbose (echo text)
+    fpToString =
+      unpack . format fp
 
   -- git seems to pipe to stderr mostly... So it won't pollute our audit
-  log "> git clone <repo> <dir>"
-  (clone, _) <- procStrict "git" ["clone", repo, format fp dir] empty
-  reportError "git clone <repo> <dir>" clone
+  log ("> cd " <> repo)
+  cd (fromText repo)
+  tarFile <- using (mktempfile dir "archive")
+  log (format ("> git archive " % s % " --format tar --output " % fp) commit tarFile)
+  archive <- proc
+    "git" ["archive", commit, "--format", "tar", "--output", format fp tarFile]
+    empty
+  reportError "git archive <commit>" archive
+  log (format ("> untaring " % fp % " to " % fp) tarFile dir)
+  liftIO (Tar.extract (fpToString dir) (fpToString tarFile))
   log "> Changing into the directory of the repository"
   cd dir
-  shellAndReportError "git reset --hard" log
-  shellAndReportError "git submodule update --init --recursive" log
+  -- Well, for submodules we yet have to find a way...
+  --shellAndReportError "git submodule update --init --recursive" log
   return ()
 
 
