@@ -1,4 +1,4 @@
-# `cloben`
+# `cloben` [![Build Status](https://travis-ci.org/sgraf812/cloben.svg?branch=master)](https://travis-ci.org/sgraf812/cloben)
 
 `cloben` is a Haskell shell script to clone git repositories and transform `cabal bench` results into a CSV file readable by `gipeda` for visualization.
 
