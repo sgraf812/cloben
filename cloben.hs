@@ -1,5 +1,5 @@
 #!/usr/bin/env stack
--- stack --resolver lts-4.0 --install-ghc runghc --package turtle
+-- stack --resolver lts-5.1 --install-ghc runghc --package turtle
 {-# LANGUAGE OverloadedStrings #-}
 
 {-| This script will automatically clone a given git repository at a specific
