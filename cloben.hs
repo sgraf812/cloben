@@ -15,16 +15,18 @@
 
 module Main where
 
-import Turtle
-import Prelude hiding (FilePath, unlines)
-import qualified Control.Foldl as Fold
-import Filesystem.Path.CurrentOS (FilePath)
+import           Control.Arrow             (first, (***))
+import qualified Control.Foldl             as Fold
+import           Data.Char                 (isSpace)
+import           Data.Either               (lefts)
+import           Data.Text                 (Text, pack, unlines, unpack)
+import           Debug.Trace               (traceShowId)
+import           Filesystem.Path.CurrentOS (FilePath)
 import qualified Filesystem.Path.CurrentOS as Filesystem
-import System.IO.Temp (withSystemTempDirectory)
-import Data.Char (isSpace)
-import Data.Either (lefts)
-import Data.Text (Text, pack, unpack, unlines)
-import Numeric (fromRat, showFFloat)
+import           Numeric                   (fromRat, showFFloat)
+import           Prelude                   hiding (FilePath, unlines)
+import           System.IO.Temp            (withSystemTempDirectory)
+import           Turtle
 
 
 {-| A gipeda metric, later to be displayed in a graph. The `Text` will be used as
@@ -38,7 +40,7 @@ type Metric
 
 {-| Parses the command line, creates a temporary directory into which to clone
     the passed repository (see @cloneRecursiveAndCheckout@).
-    After that, @cabalBench@ returns the parsed metrics which are then converted
+    After that, @compileAndBenchmark@ returns the parsed metrics which are then converted
     into the gipeda CSV format.
 
     Finally, @cd@ing into @home@ will prevent the shell to complain about the
@@ -49,7 +51,7 @@ main = sh $ do
   (repo, commit, verbose) <- options "cloben - pull, benchmark and create gipeda logs" parser
   dir <- using (mksystempdir "cloben")
   cloneRecursiveAndCheckout repo commit dir verbose
-  metrics <- cabalBench dir verbose
+  metrics <- compileAndBenchmark dir verbose
   echo (toCSV metrics)
   cd =<< home -- to supress an error of the deleted temp dir
 
@@ -70,6 +72,16 @@ mksystempdir prefix = do
   return (Filesystem.decodeString dir')
 
 
+lefts' :: Fold (Either l r) [l]
+lefts' =
+  Fold.Fold (\f -> either (\x -> f . (x:)) (const id)) id ($ [])
+
+
+rights' :: Fold (Either l r) [r]
+rights' =
+  Fold.Fold (\f -> either (const id) (\x -> f . (x:))) id ($ [])
+
+
 {-| @cloneRecursiveAndCheckout repo commit dir verbose@ effectively performs a
     recursive @git clone@ on @repo@ and checks out the specified @commit@ into
     the directory given by @dir@.
@@ -85,16 +97,16 @@ cloneRecursiveAndCheckout repo commit dir verbose = do
 
   -- git seems to pipe to stderr mostly... So it won't pollute our audit
   log "> git clone <repo> <dir>"
-  (clone, _) <- procStrict "git" ["clone", repo, format fp dir] empty
-  reportError "git clone <repo> <dir>" clone
+  (clone, _) <- procStrict "git" ["clone", "--quiet", repo, format fp dir] empty
+  reportError "git clone --quiet <repo> <dir>" clone
   log "> Changing into the directory of the repository"
   cd dir
   shellAndReportError "git reset --hard" log
-  shellAndReportError "git submodule update --init --recursive" log
+  shellAndReportError "git submodule update --init --recursive --quiet" log
   return ()
 
 
-{-| @cabalBench projectDir verbose@ builds the cabal project at @projectDir@
+{-| @compileAndBenchmark projectDir verbose@ builds the cabal project at @projectDir@
     with enabled benchmarks.
 
     The number of warnings is extracted as a @Metric@ as @build/warnings;n@.
@@ -119,43 +131,71 @@ cloneRecursiveAndCheckout repo commit dir verbose = do
 
     For @cabal build@, we need to parse stderr for warnings.
 -}
-cabalBench :: FilePath -> Bool -> Shell [Metric]
-cabalBench projectDir verbose = do
+compileAndBenchmark :: FilePath -> Bool -> Shell [Metric]
+compileAndBenchmark projectDir verbose = do
   let
     log text =
       when verbose (echo text)
 
-  log "> Changing in to the directory of the project"
-  cd projectDir
-  log "> Unsetting GHC_PACKAGE_PATH"
-  unset "GHC_PACKAGE_PATH"
-  shellAndReportError "cabal sandbox init" log
-  shellAndReportError "cabal install -j --only-dependencies --enable-bench" log
-  shellAndReportError "cabal configure --enable-benchmark" log
-  log "> cabal bench"
-  buildErr <- unlines . lefts <$> fold (inshellWithErr "cabal build" empty) Fold.list
-  benchOutput <- shellAndReportError "cabal bench" log
+    cabalBench :: Shell (Text, Text)
+    cabalBench = do
+      log "> Unsetting GHC_PACKAGE_PATH"
+      unset "GHC_PACKAGE_PATH"
+      shellAndReportError "cabal sandbox init" log
+      shellAndReportError "cabal install -j --only-dependencies --enable-bench" log
+      shellAndReportError "cabal configure --enable-benchmark" log
+      log "> cabal bench"
+      -- cabal outputs warnings on stderr and benchmark statistics on stdout
+      stderr <- fold (inshellWithErr "cabal build" empty) (unlines <$> lefts')
+      stdout <- snd <$> shellAndReportError "cabal bench" log
+      return (stderr, stdout)
 
-  let
+    stackInit :: Shell Bool
+    stackInit = do
+      exists <- testfile (projectDir </> "stack.yaml")
+      if not exists
+        then do
+          code <- fst <$> shellAndReportError "stack init --solver" log
+          return (code == ExitSuccess)
+        else
+          return True
+
+    tryStackAndFallBackToCabal :: Shell (Text, Text)
+    tryStackAndFallBackToCabal = do
+      log "> Changing in to the directory of the project"
+      cd projectDir
+      canUseStack <- stackInit
+      if canUseStack
+        then do
+          log "> stack bench"
+          -- stack outputs both warnings and benchmark statistics on stderr
+          stderr <- fold
+            (inshellWithErr "stack bench --force-dirty" empty)
+            (unlines <$> lefts')
+          return (stderr, stderr)
+        else do
+          log "Falling back to cabal"
+          cabalBench
+
     -- using head here is safe, since there is always a match
-    benchmarks :: [Metric]
+    benchmarks :: Text -> [Metric]
     benchmarks =
-      head (match criterionBenchmarks benchOutput)
+      head . match criterionBenchmarks
 
-    warnings :: Metric
+    warnings :: Text -> Metric
     warnings =
-      head (match buildWarnings buildErr)
+      head . match buildWarnings
 
-  return (warnings : benchmarks)
+  (uncurry (:) . (warnings *** benchmarks))  <$> tryStackAndFallBackToCabal
 
 
-shellAndReportError :: Text -> (Text -> Shell ()) -> Shell Text
+shellAndReportError :: Text -> (Text -> Shell ()) -> Shell (ExitCode, Text)
 shellAndReportError cmd log = do
   log ("> " <> cmd)
   (code, output) <- shellStrict cmd empty
   log output
   reportError cmd code
-  return output
+  return (code, output)
 
 
 reportError :: Text -> ExitCode -> Shell ()
@@ -180,7 +220,7 @@ buildWarnings =
 
 criterionBenchmarks :: Pattern [Metric]
 criterionBenchmarks =
-  selfless chars *> (mconcat <$> (many benchmarkGroup))
+  selfless chars *> (mconcat <$> many benchmarkGroup)
     where
       benchmarkGroup :: Pattern [Metric]
       benchmarkGroup = do
@@ -245,4 +285,4 @@ toCSV =
       showRat :: Rational -> Text
       showRat num =
         -- The Nothing is for showing all digits. Terminates for our input
-        pack ((showFFloat Nothing (fromRat num)) "")
+        pack (showFFloat Nothing (fromRat num) "")
