@@ -176,6 +176,7 @@ compileAndBenchmark projectDir verbose = do
         then do
           log "> stack bench"
           -- stack outputs both warnings and benchmark statistics on stderr
+          export "STACK_LOCK" "true"
           stderr <- fold
             (inshellWithErr "stack bench --force-dirty" empty)
             (unlines <$> lefts')
