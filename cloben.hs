@@ -1,5 +1,5 @@
 #!/usr/bin/env stack
--- stack --resolver lts-5.1 --install-ghc runghc --package turtle
+-- stack --resolver lts-5.15 --install-ghc runghc --package turtle
 {-# LANGUAGE OverloadedStrings #-}
 
 {-| This script will automatically clone a given git repository at a specific
@@ -15,7 +15,7 @@
 
 module Main where
 
-import           Control.Arrow             (first, (***))
+import           Control.Arrow             ((***))
 import qualified Control.Foldl             as Fold
 import           Data.Char                 (isSpace)
 import           Data.Either               (lefts)
@@ -38,7 +38,7 @@ type Metric
   = (Text, Rational)
 
 
-{-| Parses the command line, creates a temporary directory into which to clone
+{-| Parses the command line and optionally creates a temporary directory into which to clone
     the passed repository (see @cloneRecursiveAndCheckout@).
     After that, @compileAndBenchmark@ returns the parsed metrics which are then converted
     into the gipeda CSV format.
@@ -48,20 +48,26 @@ type Metric
 -}
 main :: IO ()
 main = sh $ do
-  (repo, commit, verbose) <- options "cloben - pull, benchmark and create gipeda logs" parser
-  dir <- using (mksystempdir "cloben")
-  cloneRecursiveAndCheckout repo commit dir verbose
+  (cloneOpts, verbose) <- options "cloben - optionally clone, benchmark and create gipeda logs" parser
+  dir <- case cloneOpts of
+    Just (repo, commit) -> do
+      dir <- using (mksystempdir "cloben")
+      cloneRecursiveAndCheckout repo commit dir verbose
+      return dir
+    Nothing -> pwd
   metrics <- compileAndBenchmark dir verbose
   echo (toCSV metrics)
   cd =<< home -- to supress an error of the deleted temp dir
 
 
-parser :: Parser (Text, Text, Bool)
-parser =
-  (,,)
-    <$> argText "repo" "URL or file path of the repository to pull from"
-    <*> argText "commit" "SHA prefix of the specific commit to benchmark"
-    <*> switch "verbose" 'v' "Output helpful debug messages as well as shell output"
+parser :: Parser (Maybe (Text, Text), Bool)
+parser = (,) <$> optional cloneOpts <*> verbose
+  where
+    cloneOpts = (,)
+      <$> argText "repo" "URL or file path of the repository to clone"
+      <*> argText "commit" "SHA prefix of the specific commit to benchmark"
+    verbose =
+      switch "verbose" 'v' "Output helpful debug messages as well as shell output"
 
 
 -- | Like `Turtle.mktempdir`, but no need to specify a parent
@@ -107,7 +113,8 @@ cloneRecursiveAndCheckout repo commit dir verbose = do
 
 
 {-| @compileAndBenchmark projectDir verbose@ builds the cabal project at @projectDir@
-    with enabled benchmarks.
+    with enabled benchmarks. It will try to utilize stack if at all possible
+    and will fall back to using cabal sandboxes.
 
     The number of warnings is extracted as a @Metric@ as @build/warnings;n@.
 
@@ -229,7 +236,7 @@ criterionBenchmarks =
         char ':'
         selfless chars
         benchmarks <- many (benchmark <* selfless chars1)
-        return (map (\(n, t) -> ("benchmark/" <> group <> "/" <> n, t)) benchmarks)
+        return (map (\(n, t) -> (group <> "/" <> n, t)) benchmarks)
 
       benchmark :: Pattern Metric
       benchmark = do

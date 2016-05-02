@@ -1,12 +1,16 @@
 # `cloben` [![Build Status](https://travis-ci.org/sgraf812/cloben.svg?branch=master)](https://travis-ci.org/sgraf812/cloben)
 
-`cloben` is a Haskell shell script to clone git repositories and transform `cabal bench` results into a CSV file readable by `gipeda` for visualization.
+`cloben` is a Haskell shell script to optionally clone git repositories and transform `cabal bench`/`stack bench` results into a CSV file readable by `gipeda` for visualization.
 
 It parses build warnings and timing data output in the standard `criterion` format.
 
 # Usage
 
-`cloben <repo> <commit>` will output the CSV data on `stdout`. This takes 10 minutes even for the simplest possible `criterion` setup on my MacBook, so stay calm :).
+There are two modes of operation:
+
+`cloben` will benchmark the current working directory and output the CSV data on `stdout`. It will try to use `stack` as an optimization, but the fall back mechanism (cabal sandboxing) takes 10 minutes on my laptop for even the simplest dependency tree, so stay calm :).
+
+`cloben <repo> <commit>` will also attempt to clone a remote git `repo` into a temporary directory (deleted after exit) and `cd` into it prior to benchmarking.
 
 For usage with `gipeda`, `stdout` should be redirected into a csv file.
 
@@ -16,19 +20,19 @@ See also `cloben --help`.
 
 Simplest way? Don't! Use [`stack`s excellent support for `runghc`](http://docs.haskellstack.org/en/stable/GUIDE.html#script-interpreter):
 ```
-$ stack cloben.hs <repo> <commit>
+$ stack cloben.hs
 ```
 Or on unixoid systems:
 ```
 $ chmod +x cloben.hs
-$ ./cloben.hs <repo> <commit>
+$ ./cloben.hs
 ```
 
 Of course, `cloben` can be built both in a `cabal` and in a `stack` environment.
 ```
-$ stack build && stack exec cloben <repo> <commit>
+$ stack build && stack exec cloben
 ...
-$ cabal install -j && cabal run <repo> <commit>
+$ cabal install -j && cabal run
 ...
 ```
 
@@ -90,8 +94,5 @@ If however you prefer to run this as a script through `stack` (see above),
 note that `stack` modifies the environment, so it will use a 'stack-local' version
 of `cabal` when `stack install cabal-install` happened.
 
-Also, `stack` will modify the path so that it points to the `ghc` executable
-for the current resolver, meaning that even if `which ghc` returns nothing, the
-script executed through `stack` will find a `ghc`. This may be or not be what you
-want, depending on if you want to force the script to use the global installation
-of `ghc`.
+Finally, note that the fallback mechanism (try `stack bench`, fall back to `cabal sandbox init && cabal bench`)
+might fail if it can't find `ghc` on the path.
