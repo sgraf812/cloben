@@ -183,7 +183,6 @@ compileAndBenchmark projectDir verbose = do
     tryStackAndFallBackToCabal = do
       log "> Changing in to the directory of the project"
       cd projectDir
-      pwd >>= testdir >>= echo . format w
       canUseStack <- stackInit
       if canUseStack
         then do
@@ -217,7 +216,6 @@ shellAndReportError :: Text -> (Text -> Shell ()) -> Shell (ExitCode, Text)
 shellAndReportError cmd log = do
   log ("> " <> cmd)
   (code, output) <- shellStrict cmd empty
-  log output
   reportError cmd code
   return (code, output)
 
