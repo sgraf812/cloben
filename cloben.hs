@@ -16,6 +16,7 @@
 module Main where
 
 import           Control.Arrow             ((***))
+import           Control.Exception         (bracket)
 import qualified Control.Foldl             as Fold
 import           Data.Char                 (isSpace)
 import           Data.Either               (lefts)
@@ -26,6 +27,8 @@ import qualified Filesystem.Path.CurrentOS as Filesystem
 import           Numeric                   (fromRat, showFFloat)
 import           Prelude                   hiding (FilePath, unlines)
 import           System.IO.Temp            (withSystemTempDirectory)
+import           System.Process            (readCreateProcessWithExitCode)
+import qualified System.Process            as Proc
 import           Turtle
 
 
@@ -73,8 +76,13 @@ parser = (,) <$> optional cloneOpts <*> verbose
 -- | Like `Turtle.mktempdir`, but no need to specify a parent
 mksystempdir :: Text -> Managed FilePath
 mksystempdir prefix = do
-  let prefix' = unpack prefix
+  let
+    prefix' =
+      unpack prefix
   dir' <- managed (withSystemTempDirectory prefix')
+  -- We need to cd back into home before we delete dir' again,
+  -- otherwise we will quit with an error
+  managed (bracket (return ()) (const (home >>= cd)))
   return (Filesystem.decodeString dir')
 
 
@@ -107,7 +115,9 @@ cloneRecursiveAndCheckout repo commit dir verbose = do
   reportError "git clone --quiet <repo> <dir>" clone
   log "> Changing into the directory of the repository"
   cd dir
-  shellAndReportError "git reset --hard" log
+  log "> git reset --hard <commit>"
+  (reset, _) <- procStrict "git" ["reset", "--hard", commit] empty
+  reportError "git reset --hard <commit>" reset
   shellAndReportError "git submodule update --init --recursive --quiet" log
   return ()
 
@@ -162,25 +172,31 @@ compileAndBenchmark projectDir verbose = do
       exists <- testfile (projectDir </> "stack.yaml")
       if not exists
         then do
+          log "> No stack.yaml found"
           code <- fst <$> shellAndReportError "stack init --solver" log
           return (code == ExitSuccess)
-        else
+        else do
+          log "> Found stack.yaml"
           return True
 
     tryStackAndFallBackToCabal :: Shell (Text, Text)
     tryStackAndFallBackToCabal = do
       log "> Changing in to the directory of the project"
       cd projectDir
+      pwd >>= testdir >>= echo . format w
       canUseStack <- stackInit
       if canUseStack
         then do
           log "> stack bench"
           -- stack outputs both warnings and benchmark statistics on stderr
           export "STACK_LOCK" "true"
-          stderr <- fold
-            (inshellWithErr "stack bench --force-dirty" empty)
-            (unlines <$> lefts')
-          return (stderr, stderr)
+          let
+            cmd :: IsString s => s
+            cmd = "stack bench --force-dirty"
+          (exitCode, stdout, stderr) <- liftIO $
+            readCreateProcessWithExitCode (Proc.shell cmd) ""
+          reportError cmd exitCode
+          return (pack stderr, pack stderr)
         else do
           log "Falling back to cabal"
           cabalBench
