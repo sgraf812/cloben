@@ -22,7 +22,6 @@ import qualified Control.Foldl             as Fold
 import           Data.Char                 (isSpace)
 import           Data.Either               (lefts)
 import           Data.Text                 (Text, pack, unlines, unpack)
-import           Debug.Trace               (traceShowId)
 import           Filesystem.Path.CurrentOS (FilePath)
 import qualified Filesystem.Path.CurrentOS as Filesystem
 import           Numeric                   (fromRat, showFFloat)
