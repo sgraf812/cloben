@@ -155,7 +155,8 @@ script:
   set -ex
   case "$BUILD" in
     stack)
-      stack --no-terminal $ARGS test --bench --no-run-benchmarks --haddock --no-haddock-deps
+      stack --no-terminal $ARGS test --copy-bins --bench --no-run-benchmarks --haddock --no-haddock-deps
+      [ $(cloben https://github.com/sgraf812/benchmark-test 9982583 | wc -l) == 4 ]
       ;;
     cabal)
       cabal install --enable-tests --enable-benchmarks --force-reinstalls --ghc-options=-O0 --reorder-goals --max-backjumps=-1 $CABALARGS $PACKAGES
@@ -172,5 +173,4 @@ script:
       done
       ;;
   esac
-  [ $(cloben https://github.com/sgraf812/benchmark-test 9982583 | wc -l) == 4 ]
   set +ex
