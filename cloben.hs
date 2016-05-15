@@ -28,8 +28,7 @@ import qualified Filesystem.Path.CurrentOS as Filesystem
 import           Numeric                   (fromRat, showFFloat)
 import           Prelude                   hiding (FilePath, unlines)
 import           System.IO.Temp            (withSystemTempDirectory)
-import           System.Process            (readCreateProcessWithExitCode)
-import qualified System.Process            as Proc
+import           System.Process            (readProcessWithExitCode)
 import           Turtle
 
 
@@ -185,7 +184,7 @@ compileAndBenchmark projectDir verbose = do
             cmd :: IsString s => s
             cmd = "stack bench --force-dirty"
           (exitCode, stdout, stderr) <- liftIO $
-            readCreateProcessWithExitCode (Proc.shell cmd) ""
+            readProcessWithExitCode "stack" ["bench", "--force-dirty"] ""
           reportError cmd exitCode (pack stderr)
           return (pack stderr, pack stderr)
         else do
