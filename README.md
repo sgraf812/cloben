@@ -1,6 +1,7 @@
 # `cloben` [![Build Status](https://travis-ci.org/sgraf812/cloben.svg?branch=master)](https://travis-ci.org/sgraf812/cloben)
 
-`cloben` is a Haskell shell script to optionally clone git repositories and transform `cabal bench`/`stack bench` results into a CSV file readable by `gipeda` for visualization.
+`cloben` is a Haskell shell script transforms `cabal bench`/`stack bench` results into a CSV file readable by `gipeda` for visualization.
+Prior to that, it optionally clones a specific commit of a given git repository into a temporary folder in which it then performs the benchmarking.
 
 It parses build warnings and timing data output in the standard `criterion` format.
 
@@ -8,9 +9,9 @@ It parses build warnings and timing data output in the standard `criterion` form
 
 There are two modes of operation:
 
-`cloben` will benchmark the current working directory and output the CSV data on `stdout`. It will try to use `stack` as an optimization, but the fall back mechanism (cabal sandboxing) takes 10 minutes on my laptop for even the simplest dependency tree, so stay calm :).
+`cloben` will benchmark the cabal project in the current working directory and output the CSV data on `stdout`. It will try to use `stack` as an optimization, but the fall back mechanism (cabal sandboxing) takes 10 minutes on my laptop for even the simplest dependency tree, so stay calm :).
 
-`cloben <repo> <commit>` will also attempt to clone a remote git `repo` into a temporary directory (deleted after exit) and `cd` into it prior to benchmarking.
+`cloben <repo> <commit>` will also attempt to recursively clone a remote git `repo` at a specific `commit` into a temporary directory and `cd` into it prior to benchmarking.
 
 For usage with `gipeda`, `stdout` should be redirected into a csv file.
 
@@ -36,13 +37,21 @@ $ cabal install -j && cabal run
 ...
 ```
 
+Or even just through hackage:
+
+```
+$ stack install cloben && cloben
+...
+$ cabal install cloben && cloben
+...
+```
+
 # Example
 
 What running `cloben` on the `Pipes` library yielded:
 
 ```
 $ ./cloben.hs https://github.com/Gabriel439/Haskell-Pipes-Library 930c834aacfa7bf8ec65d072e0d0a982aa7a2bc1 > logs/930c834aacfa7bf8ec65d072e0d0a982aa7a2bc1.csv
-# Some irrevelant out-of-band git output
 $ cat logs/930c834aacfa7bf8ec65d072e0d0a982aa7a2bc1.csv
 build/warnings;81.0
 benchmark/prelude-benchmarks/Folds/all;152900.0

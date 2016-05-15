@@ -9,7 +9,8 @@
     Currently, only the number of build warnings and standard criterion timing
     output are recognized.
 
-    You can execute this script by running @stack cloben.hs repo commit@ or
+    You can execute this script by running @stack cloben.hs@ in your project directory,
+    as @stack cloben.hs repo commit@ if you don't have a local clone of you project or
     even as @./cloben.hs repo commit@ if marked as executable.
 -}
 
@@ -45,9 +46,6 @@ type Metric
     the passed repository (see @cloneRecursiveAndCheckout@).
     After that, @compileAndBenchmark@ returns the parsed metrics which are then converted
     into the gipeda CSV format.
-
-    Finally, @cd@ing into @home@ will prevent the shell to complain about the
-    immediately deleted temporary dir, which would be the @pwd@.
 -}
 main :: IO ()
 main = sh $ do
@@ -60,7 +58,6 @@ main = sh $ do
     Nothing -> pwd
   metrics <- compileAndBenchmark dir verbose
   echo (toCSV metrics)
-  cd =<< home -- to supress an error of the deleted temp dir
 
 
 parser :: Parser (Maybe (Text, Text), Bool)
@@ -91,11 +88,6 @@ lefts' =
   Fold.Fold (\f -> either (\x -> f . (x:)) (const id)) id ($ [])
 
 
-rights' :: Fold (Either l r) [r]
-rights' =
-  Fold.Fold (\f -> either (const id) (\x -> f . (x:))) id ($ [])
-
-
 {-| @cloneRecursiveAndCheckout repo commit dir verbose@ effectively performs a
     recursive @git clone@ on @repo@ and checks out the specified @commit@ into
     the directory given by @dir@.
@@ -111,13 +103,13 @@ cloneRecursiveAndCheckout repo commit dir verbose = do
 
   -- git seems to pipe to stderr mostly... So it won't pollute our audit
   log "> git clone <repo> <dir>"
-  (clone, _) <- procStrict "git" ["clone", "--quiet", repo, format fp dir] empty
-  reportError "git clone --quiet <repo> <dir>" clone
+  (clone, cloneOutput) <- procStrict "git" ["clone", "--quiet", repo, format fp dir] empty
+  reportError "git clone --quiet <repo> <dir>" clone cloneOutput
   log "> Changing into the directory of the repository"
   cd dir
   log "> git reset --hard <commit>"
-  (reset, _) <- procStrict "git" ["reset", "--hard", commit] empty
-  reportError "git reset --hard <commit>" reset
+  (reset, resetOutput) <- procStrict "git" ["reset", "--hard", commit] empty
+  reportError "git reset --hard <commit>" reset resetOutput
   shellAndReportError "git submodule update --init --recursive --quiet" log
   return ()
 
@@ -194,7 +186,7 @@ compileAndBenchmark projectDir verbose = do
             cmd = "stack bench --force-dirty"
           (exitCode, stdout, stderr) <- liftIO $
             readCreateProcessWithExitCode (Proc.shell cmd) ""
-          reportError cmd exitCode
+          reportError cmd exitCode (pack stderr)
           return (pack stderr, pack stderr)
         else do
           log "Falling back to cabal"
@@ -216,15 +208,16 @@ shellAndReportError :: Text -> (Text -> Shell ()) -> Shell (ExitCode, Text)
 shellAndReportError cmd log = do
   log ("> " <> cmd)
   (code, output) <- shellStrict cmd empty
-  reportError cmd code
+  reportError cmd code output
   return (code, output)
 
 
-reportError :: Text -> ExitCode -> Shell ()
-reportError cmd code =
+reportError :: Text -> ExitCode -> Text -> Shell ()
+reportError cmd code output =
   case code of
     ExitSuccess -> return ()
-    ExitFailure n -> die (cmd <> " failed with exit code " <> repr n)
+    ExitFailure n -> die (cmd <> " failed with exit code " <> repr n <>
+      ". Output:\n" <> output)
 
 
 buildWarnings :: Pattern Metric
