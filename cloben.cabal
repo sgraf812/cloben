@@ -25,3 +25,7 @@ executable cloben
     text < 1.3,
     temporary >= 1.1 && < 1.3,
     process >= 1.2.3.0 && < 1.5
+
+source-repository head
+  type: git
+  location: https://github.com/sgraf812/cloben.git
