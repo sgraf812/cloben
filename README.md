@@ -1,4 +1,4 @@
-# `cloben` [![Build Status](https://travis-ci.org/sgraf812/cloben.svg?branch=master)](https://travis-ci.org/sgraf812/cloben)
+# `cloben` [![Build Status](https://travis-ci.org/sgraf812/cloben.svg?branch=master)](https://travis-ci.org/sgraf812/cloben) [![Hackage](https://img.shields.io/hackage/v/cloben.svg?flat=true)](https://hackage.haskell.org/package/cloben)
 
 `cloben` is a Haskell shell script transforms `cabal bench`/`stack bench` results into a CSV file readable by `gipeda` for visualization.
 Prior to that, it optionally clones a specific commit of a given git repository into a temporary folder in which it then performs the benchmarking.

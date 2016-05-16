@@ -1,18 +1,31 @@
 name:                cloben
 version:             0.1.0.0
-synopsis:            Clone and benchmark Haskell git repositories
-description:         Shell script to clone git repositories and transform
-                     benchmark data into a format readable by gipeda.
-                     See the README.md on GitHub for details.
+synopsis:            Clone and benchmark Haskell cabal projects
+description:
+  @cloben@ is a Haskell shell script transforms @cabal bench@/@stack bench@
+  results into a CSV file readable by @gipeda@ for visualization.
+  Prior to that, it optionally clones a specific commit of a given
+  git repository into a temporary folder in which it then performs the benchmarking.
+  .
+  Example run of some default @fib@ benchmarks:
+  .
+  @
+  $ cloben https:\/\/github.com\/sgraf812\/benchmark-test 9982583
+  build\/warnings;1.0
+  benchmarks\/fib\/10;487.7
+  benchmarks\/fib\/35;81910000.0
+  benchmarks\/fib\/37;215200000.0
+  @
 homepage:            http://github.com/sgraf812/cloben#readme
 license:             BSD3
 license-file:        LICENSE
 author:              Sebastian Graf
 maintainer:          sgraf1337@gmail.com
 copyright:           2015 Sebastian Graf
-category:            Development
+category:            Benchmarking
 build-type:          Simple
 cabal-version:       >=1.10
+extra-source-files:  README.md
 
 executable cloben
   hs-source-dirs:      .
