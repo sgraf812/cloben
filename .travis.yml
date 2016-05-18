@@ -156,7 +156,7 @@ script:
   case "$BUILD" in
     stack)
       stack --no-terminal $ARGS test --copy-bins --bench --no-run-benchmarks --haddock --no-haddock-deps
-      cloben https://github.com/sgraf812/benchmark-test 99825834 -v
+      # cloben https://github.com/sgraf812/benchmark-test 99825834 -v # Would love to, but the build times out
       ;;
     cabal)
       cabal install --enable-tests --enable-benchmarks --force-reinstalls --ghc-options=-O0 --reorder-goals --max-backjumps=-1 $CABALARGS $PACKAGES
