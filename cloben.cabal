@@ -1,5 +1,5 @@
 name:                cloben
-version:             0.1.0.0
+version:             0.1.0.1
 synopsis:            Clone and benchmark Haskell cabal projects
 description:
   @cloben@ is a Haskell shell script transforms @cabal bench@/@stack bench@
