@@ -181,9 +181,9 @@ compileAndBenchmark projectDir verbose = do
           export "STACK_LOCK" "true"
           let
             cmd :: IsString s => s
-            cmd = "stack bench --force-dirty"
+            cmd = "stack bench --force-dirty --install-ghc"
           (exitCode, stdout, stderr) <- liftIO $
-            readProcessWithExitCode "stack" ["bench", "--force-dirty"] ""
+            readProcessWithExitCode "stack" ["bench", "--force-dirty", "--install-ghc"] ""
           reportError cmd exitCode (pack stderr)
           return (pack stderr, pack stderr)
         else do
