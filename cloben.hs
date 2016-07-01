@@ -163,7 +163,10 @@ compileAndBenchmark projectDir verbose = do
       if not exists
         then do
           log "> No stack.yaml found"
-          code <- fst <$> shellAndReportError "stack init --solver" log
+          log "> stack init --solver"
+          (code, stdout, stderr) <- liftIO $
+            readCreateProcessWithExitCode (Proc.shell "stack init --solver") ""
+          log (pack stderr)
           return (code == ExitSuccess)
         else do
           log "> Found stack.yaml"
