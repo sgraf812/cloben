@@ -165,7 +165,7 @@ compileAndBenchmark projectDir verbose = do
           log "> No stack.yaml found"
           log "> stack init --solver"
           (code, stdout, stderr) <- liftIO $
-            readCreateProcessWithExitCode (Proc.shell "stack init --solver") ""
+            readProcessWithExitCode "stack" ["init", "--solver"] ""
           log (pack stderr)
           return (code == ExitSuccess)
         else do
