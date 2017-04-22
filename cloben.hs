@@ -1,5 +1,6 @@
 #!/usr/bin/env stack
 -- stack --resolver lts-5.15 --install-ghc runghc --package turtle
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {-| This script will automatically clone a given git repository at a specific
@@ -28,8 +29,16 @@ import           Numeric                   (fromRat, showFFloat)
 import           Prelude                   hiding (FilePath, unlines)
 import           System.IO.Temp            (withSystemTempDirectory)
 import           System.Process            (readProcessWithExitCode)
-import           Turtle
+import           Turtle                    hiding (echo)
 
+#if MIN_VERSION_turtle(1,3,0)
+#else
+lineToText :: Text -> Text
+lineToText = id
+#endif
+
+echo :: (MonadIO io) => Text -> io ()
+echo = printf (s % "\n")
 
 {-| A gipeda metric, later to be displayed in a graph. The `Text` will be used as
     the name of the benchmark, the `Rational` is the actual metric which will be
@@ -153,7 +162,8 @@ compileAndBenchmark projectDir verbose = do
       shellAndReportError "cabal configure --enable-benchmark" log
       log "> cabal bench"
       -- cabal outputs warnings on stderr and benchmark statistics on stdout
-      stderr <- fold (inshellWithErr "cabal build" empty) (unlines <$> lefts')
+      stderr <- fold (inshellWithErr "cabal build" empty)
+                (unlines .  map lineToText <$> lefts')
       stdout <- snd <$> shellAndReportError "cabal bench" log
       return (stderr, stdout)
 
