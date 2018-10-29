@@ -261,7 +261,7 @@ criterionBenchmarks =
 
       word :: Pattern Text
       word =
-        plus (satisfy (not . isSpace))
+        plus (satisfy (/= '\n'))
 
       decimalPlaces :: Rational -> Rational
       decimalPlaces n =
