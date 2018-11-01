@@ -1,5 +1,5 @@
 #!/usr/bin/env stack
--- stack --resolver lts-5.15 --install-ghc runghc --package turtle
+-- stack --resolver lts-11.22 runghc --package turtle
 {-# LANGUAGE OverloadedStrings #-}
 
 {-| This script will automatically clone a given git repository at a specific
@@ -55,7 +55,7 @@ main = sh $ do
       return dir
     Nothing -> pwd
   metrics <- compileAndBenchmark dir verbose
-  echo (toCSV metrics)
+  printf s (toCSV metrics)
 
 
 parser :: Parser (Maybe (Text, Text), Bool)
@@ -97,7 +97,7 @@ cloneRecursiveAndCheckout :: Text -> Text -> FilePath -> Bool -> Shell ()
 cloneRecursiveAndCheckout repo commit dir verbose = do
   let
     log text =
-      when verbose (echo text)
+      when verbose (printf (s%"\n") text)
 
   -- git seems to pipe to stderr mostly... So it won't pollute our audit
   log "> git clone <repo> <dir>"
@@ -142,7 +142,7 @@ compileAndBenchmark :: FilePath -> Bool -> Shell [Metric]
 compileAndBenchmark projectDir verbose = do
   let
     log text =
-      when verbose (echo text)
+      when verbose (printf (s%"\n") text)
 
     cabalBench :: Shell (Text, Text)
     cabalBench = do
@@ -153,7 +153,7 @@ compileAndBenchmark projectDir verbose = do
       shellAndReportError "cabal configure --enable-benchmark" log
       log "> cabal bench"
       -- cabal outputs warnings on stderr and benchmark statistics on stdout
-      stderr <- fold (inshellWithErr "cabal build" empty) (unlines <$> lefts')
+      stderr <- fold (inshellWithErr "cabal build" empty) (linesToText <$> lefts')
       stdout <- snd <$> shellAndReportError "cabal bench" log
       return (stderr, stdout)
 
